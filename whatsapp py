@@ -1,0 +1,88 @@
+"""
+Sends WhatsApp messages on your command via WhatsApp Web, automated locally
+with Selenium. You scan the QR code once (like logging into WhatsApp Web
+normally) — after that, your session is saved locally in a Chrome profile
+folder on your own disk, so it won't ask again.
+
+Nothing about this goes through any third party — it's the same WhatsApp
+Web you'd use manually, just driven by your local browser.
+"""
+
+import time
+import urllib.parse
+
+import config
+
+_driver = None  # kept open across calls in the same session for speed
+
+
+def _get_driver():
+    global _driver
+    if _driver is not None:
+        return _driver
+
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+
+    options = Options()
+    options.add_argument(f"--user-data-dir={config.WHATSAPP_PROFILE_DIR}")
+    options.add_argument("--profile-directory=Default")
+    # Keep the window visible the first time so you can scan the QR code.
+    _driver = webdriver.Chrome(options=options)
+    _driver.get("https://web.whatsapp.com")
+    return _driver
+
+
+def send_message(contact_name_or_number: str, message: str) -> str:
+    if not config.WHATSAPP_ENABLED:
+        return "WhatsApp is disabled in config.py."
+
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+
+    try:
+        driver = _get_driver()
+
+        # If it looks like a phone number, use the direct chat-link method (fastest, most reliable).
+        digits = "".join(ch for ch in contact_name_or_number if ch.isdigit())
+        if len(digits) >= 10:
+            url = f"https://web.whatsapp.com/send?phone={digits}&text={urllib.parse.quote(message)}"
+            driver.get(url)
+            send_btn = WebDriverWait(driver, 30).until(
+                EC.element_to_be_clickable((By.XPATH, '//span[@data-icon="send"]'))
+            )
+            send_btn.click()
+            time.sleep(1)
+            return f"Sent WhatsApp message to {contact_name_or_number}."
+
+        # Otherwise search for the contact by name.
+        driver.get("https://web.whatsapp.com")
+        search_box = WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true"][@data-tab="3"]'))
+        )
+        search_box.click()
+        search_box.send_keys(contact_name_or_number)
+        time.sleep(2)
+
+        first_result = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, '//div[@id="pane-side"]//div[@role="listitem"]'))
+        )
+        first_result.click()
+        time.sleep(1)
+
+        message_box = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]'))
+        )
+        from selenium.webdriver.common.keys import Keys
+        lines = message.split("\n")
+        for i, line in enumerate(lines):
+            message_box.send_keys(line)
+            if i < len(lines) - 1:
+                message_box.send_keys(Keys.SHIFT, Keys.ENTER)
+        message_box.send_keys(Keys.ENTER)
+        return f"Sent WhatsApp message to {contact_name_or_number}."
+
+    except Exception as e:
+        return (f"Couldn't send WhatsApp message: {e}. "
+                "Make sure a Chrome window opened and you scanned the QR code if this was the first run.")
