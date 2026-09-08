@@ -1,0 +1,98 @@
+"""
+Jarvis — Private, Local Personal AI Assistant
+Entry point: listen -> transcribe -> think (local LLM) -> act -> speak -> repeat
+
+Everything runs on your machine:
+  - Speech-to-text: faster-whisper (local, GPU-accelerated)
+  - Brain: Ollama running a local LLM (nothing sent to the cloud)
+  - Memory: SQLite file in ./data/memory.db (never leaves your disk)
+  - Text-to-speech: pyttsx3 (fully offline by default)
+
+The only exceptions are the weather and web_search tools, which send
+just the specific query text out — never your conversation or memory.
+"""
+
+import json
+import sys
+
+import config
+from modules.stt import SpeechListener
+from modules.tts import Speaker
+from modules.memory import Memory
+from modules import llm, tools
+
+
+def build_messages(memory: Memory) -> list:
+    facts = memory.get_all_facts()
+    system_content = config.SYSTEM_PROMPT
+    if facts:
+        system_content += "\n\nThings you know about the user:\n" + "\n".join(f"- {f}" for f in facts)
+
+    messages = [{"role": "system", "content": system_content}]
+    messages.extend(memory.get_recent_messages())
+    return messages
+
+
+def handle_turn(user_text: str, memory: Memory, speaker: Speaker):
+    memory.add_message("user", user_text)
+    messages = build_messages(memory)
+
+    assistant_msg = llm.chat(messages)
+
+    # If the model wants to call a tool, execute it and loop back once
+    tool_calls = assistant_msg.get("tool_calls")
+    if tool_calls:
+        messages.append(assistant_msg)
+        for call in tool_calls:
+            fn = call["function"]["name"]
+            args = call["function"].get("arguments", {})
+            if isinstance(args, str):
+                args = json.loads(args)
+            result = tools.execute_tool(fn, args, memory)
+            messages.append({"role": "tool", "content": result, "name": fn})
+
+        # Ask the model to produce a final natural-language reply using the tool result
+        final_msg = llm.chat(messages)
+        reply = final_msg.get("content", "").strip()
+    else:
+        reply = assistant_msg.get("content", "").strip()
+
+    memory.add_message("assistant", reply)
+    speaker.speak(reply)
+
+
+def text_mode(memory: Memory, speaker: Speaker):
+    print(f"\n{config.ASSISTANT_NAME} is running in TEXT mode. Type 'quit' to exit.\n")
+    while True:
+        user_text = input("You: ").strip()
+        if user_text.lower() in ("quit", "exit"):
+            break
+        if not user_text:
+            continue
+        handle_turn(user_text, memory, speaker)
+
+
+def voice_mode(memory: Memory, speaker: Speaker):
+    listener = SpeechListener()
+    print(f"\n{config.ASSISTANT_NAME} is running in VOICE mode. Press Ctrl+C to exit.\n")
+    while True:
+        try:
+            text = listener.listen_and_transcribe()
+            if not text:
+                continue
+            print(f"You said: {text}")
+            handle_turn(text, memory, speaker)
+        except KeyboardInterrupt:
+            print("\nGoodbye.")
+            break
+
+
+if __name__ == "__main__":
+    memory = Memory()
+    speaker = Speaker()
+
+    mode = sys.argv[1] if len(sys.argv) > 1 else "text"
+    if mode == "voice":
+        voice_mode(memory, speaker)
+    else:
+        text_mode(memory, speaker)
