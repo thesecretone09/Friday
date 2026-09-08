@@ -1,0 +1,172 @@
+"""
+Connects to a locally-running Ollama server (http://localhost:11434).
+Your conversation NEVER leaves your machine here — Ollama runs the model
+entirely on your own GPU.
+"""
+
+import json
+import requests
+
+import config
+
+
+TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+                "type": "object",
+                "properties": {"city": {"type": "string", "description": "City name"}},
+                "required": ["city"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for current information",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "Search query"}},
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_datetime",
+            "description": "Get the current local date and time",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_application",
+            "description": "Open a desktop application by name (e.g. notepad, calculator, chrome)",
+            "parameters": {
+                "type": "object",
+                "properties": {"app_name": {"type": "string"}},
+                "required": ["app_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_reminder",
+            "description": "Save a local reminder/note for the user",
+            "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_smart_devices",
+            "description": "List the user's smart home lights and switches, with their current on/off state",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "control_smart_device",
+            "description": "Turn a smart light or plug/switch on, off, or toggle it",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string", "description": "Name of the device, e.g. 'bedroom light' or 'fan plug'"},
+                    "action": {"type": "string", "enum": ["on", "off", "toggle"]},
+                },
+                "required": ["device_name", "action"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_whatsapp_message",
+            "description": "Send a WhatsApp message to a contact by name or phone number",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "contact": {"type": "string", "description": "Contact name or phone number with country code"},
+                    "message": {"type": "string"},
+                },
+                "required": ["contact", "message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "phone_send_sms",
+            "description": "Open a pre-filled SMS text message on the user's phone",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone_number": {"type": "string"},
+                    "message": {"type": "string"},
+                },
+                "required": ["phone_number", "message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "phone_call",
+            "description": "Place a phone call from the user's phone to a number",
+            "parameters": {
+                "type": "object",
+                "properties": {"phone_number": {"type": "string"}},
+                "required": ["phone_number"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "phone_open_app",
+            "description": "Open an app on the user's phone",
+            "parameters": {
+                "type": "object",
+                "properties": {"app_name": {"type": "string", "description": "e.g. whatsapp, chrome, spotify, gmail, camera"}},
+                "required": ["app_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "phone_get_battery",
+            "description": "Get the user's phone battery percentage",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+]
+
+
+def chat(messages: list) -> dict:
+    """
+    Sends the conversation to the local Ollama model.
+    Returns the raw assistant message dict (may include tool_calls).
+    """
+    payload = {
+        "model": config.OLLAMA_MODEL,
+        "messages": messages,
+        "tools": TOOL_DEFINITIONS,
+        "stream": False,
+    }
+    resp = requests.post(f"{config.OLLAMA_HOST}/api/chat", json=payload, timeout=120)
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("message", {})
