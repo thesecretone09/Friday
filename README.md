@@ -1,4 +1,4 @@
-# Jarvis — Your Private, Local AI Assistant
+# friday— Your Private, Local AI Assistant
 
 Everything below runs **on your own Windows PC**. Your voice, conversations,
 and memory never leave your machine. The only exceptions are the optional
