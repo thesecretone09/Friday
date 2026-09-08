@@ -1,0 +1,171 @@
+"""
+Android phone control via ADB (Android Debug Bridge) over your local WiFi.
+This talks directly to your phone over your own network using Android's
+built-in debugging protocol — no app installs, no cloud account, no data
+leaving your network.
+
+Requires: platform-tools (adb.exe) installed and your phone paired once
+via Wireless Debugging (see README).
+"""
+
+import subprocess
+
+import config
+
+
+def _adb(*args) -> tuple:
+    """Runs an adb command against the configured device and returns (success, output)."""
+    cmd = ["adb", "-s", config.ADB_DEVICE_ADDRESS] + list(args)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if result.returncode != 0:
+            return False, result.stderr.strip()
+        return True, result.stdout.strip()
+    except FileNotFoundError:
+        return False, "adb.exe not found. Install Android platform-tools and add it to PATH."
+    except Exception as e:
+        return False, str(e)
+
+
+def is_connected() -> bool:
+    ok, out = _adb("get-state")
+    return ok and "device" in out
+
+
+def send_sms(phone_number: str, message: str) -> str:
+    if not config.PHONE_ENABLED:
+        return "Phone control is disabled in config.py."
+    if not is_connected():
+        return "Phone isn't connected. Check Wireless Debugging is on and paired."
+    # Uses an intent to open the SMS app pre-filled, then sends it via a tap simulation.
+    # A pre-filled + auto-send intent (safe, no special permissions needed):
+    ok, out = _adb(
+        "shell", "am", "start", "-a", "android.intent.action.SENDTO",
+        "-d", f"sms:{phone_number}", "--es", "sms_body", message, "--ez", "exit_on_sent", "true"
+    )
+    if not ok:
+        return f"Couldn't open SMS composer: {out}"
+    return (f"Opened a text to {phone_number} with your message ready. "
+            "Tap send on your phone to confirm (ADB can't auto-tap send for SMS by default).")
+
+
+def make_call(phone_number: str) -> str:
+    if not config.PHONE_ENABLED:
+        return "Phone control is disabled in config.py."
+    if not is_connected():
+        return "Phone isn't connected. Check Wireless Debugging is on and paired."
+    ok, out = _adb("shell", "am", "start", "-a", "android.intent.action.CALL", "-d", f"tel:{phone_number}")
+    return f"Calling {phone_number}." if ok else f"Couldn't place call: {out}"
+
+
+def open_app(app_name: str) -> str:
+    if not config.PHONE_ENABLED:
+        return "Phone control is disabled in config.py."
+    if not is_connected():
+        return "Phone isn't connected. Check Wireless Debugging is on and paired."
+    package = config.PHONE_APP_PACKAGES.get(app_name.lower())
+    if not package:
+        known = ", ".join(config.PHONE_APP_PACKAGES.keys())
+        return f"Don't know the package for '{app_name}'. Known apps: {known}. Add more in config.py."
+    ok, out = _adb("shell", "monkey", "-p", package, "-c", "android.intent.category.LAUNCHER", "1")
+    return f"Opening {app_name} on your phone." if ok else f"Couldn't open {app_name}: {out}"
+
+
+def get_battery() -> str:
+    if not config.PHONE_ENABLED:
+        return "Phone control is disabled in config.py."
+    if not is_connected():
+        return "Phone isn't connected. Check Wireless Debugging is on and paired."
+    ok, out = _adb("shell", "dumpsys", "battery")
+    if not ok:
+        return f"Couldn't read battery: {out}"
+    for line in out.splitlines():
+        if "level" in line.lower():
+            level = line.split(":")[-1].strip()
+            return f"Your phone is at {level}% battery."
+    return "Couldn't parse battery level.""""
+Android phone control via ADB (Android Debug Bridge) over your local WiFi.
+This talks directly to your phone over your own network using Android's
+built-in debugging protocol — no app installs, no cloud account, no data
+leaving your network.
+
+Requires: platform-tools (adb.exe) installed and your phone paired once
+via Wireless Debugging (see README).
+"""
+
+import subprocess
+
+import config
+
+
+def _adb(*args) -> tuple:
+    """Runs an adb command against the configured device and returns (success, output)."""
+    cmd = ["adb", "-s", config.ADB_DEVICE_ADDRESS] + list(args)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if result.returncode != 0:
+            return False, result.stderr.strip()
+        return True, result.stdout.strip()
+    except FileNotFoundError:
+        return False, "adb.exe not found. Install Android platform-tools and add it to PATH."
+    except Exception as e:
+        return False, str(e)
+
+
+def is_connected() -> bool:
+    ok, out = _adb("get-state")
+    return ok and "device" in out
+
+
+def send_sms(phone_number: str, message: str) -> str:
+    if not config.PHONE_ENABLED:
+        return "Phone control is disabled in config.py."
+    if not is_connected():
+        return "Phone isn't connected. Check Wireless Debugging is on and paired."
+    # Uses an intent to open the SMS app pre-filled, then sends it via a tap simulation.
+    # A pre-filled + auto-send intent (safe, no special permissions needed):
+    ok, out = _adb(
+        "shell", "am", "start", "-a", "android.intent.action.SENDTO",
+        "-d", f"sms:{phone_number}", "--es", "sms_body", message, "--ez", "exit_on_sent", "true"
+    )
+    if not ok:
+        return f"Couldn't open SMS composer: {out}"
+    return (f"Opened a text to {phone_number} with your message ready. "
+            "Tap send on your phone to confirm (ADB can't auto-tap send for SMS by default).")
+
+
+def make_call(phone_number: str) -> str:
+    if not config.PHONE_ENABLED:
+        return "Phone control is disabled in config.py."
+    if not is_connected():
+        return "Phone isn't connected. Check Wireless Debugging is on and paired."
+    ok, out = _adb("shell", "am", "start", "-a", "android.intent.action.CALL", "-d", f"tel:{phone_number}")
+    return f"Calling {phone_number}." if ok else f"Couldn't place call: {out}"
+
+
+def open_app(app_name: str) -> str:
+    if not config.PHONE_ENABLED:
+        return "Phone control is disabled in config.py."
+    if not is_connected():
+        return "Phone isn't connected. Check Wireless Debugging is on and paired."
+    package = config.PHONE_APP_PACKAGES.get(app_name.lower())
+    if not package:
+        known = ", ".join(config.PHONE_APP_PACKAGES.keys())
+        return f"Don't know the package for '{app_name}'. Known apps: {known}. Add more in config.py."
+    ok, out = _adb("shell", "monkey", "-p", package, "-c", "android.intent.category.LAUNCHER", "1")
+    return f"Opening {app_name} on your phone." if ok else f"Couldn't open {app_name}: {out}"
+
+
+def get_battery() -> str:
+    if not config.PHONE_ENABLED:
+        return "Phone control is disabled in config.py."
+    if not is_connected():
+        return "Phone isn't connected. Check Wireless Debugging is on and paired."
+    ok, out = _adb("shell", "dumpsys", "battery")
+    if not ok:
+        return f"Couldn't read battery: {out}"
+    for line in out.splitlines():
+        if "level" in line.lower():
+            level = line.split(":")[-1].strip()
+            return f"Your phone is at {level}% battery."
+    return "Couldn't parse battery level."
