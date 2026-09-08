@@ -1,0 +1,104 @@
+"""
+Tool implementations.
+Only get_weather and web_search touch the internet — and only the
+specific query text is sent out, never your conversation history or
+anything from your local memory database.
+"""
+
+import datetime
+import subprocess
+import requests
+
+import config
+from modules import smart_home, phone_control, whatsapp
+
+
+def get_weather(city: str) -> str:
+    if not config.ENABLE_WEATHER:
+        return "Weather lookups are disabled in config.py."
+    if not config.OPEN_WEATHER_API_KEY:
+        return ("No weather API key set. Get a free key at openweathermap.org "
+                "and set the OPENWEATHER_API_KEY environment variable.")
+    try:
+        url = "https://api.openweathermap.org/data/2.5/weather"
+        params = {"q": city, "appid": config.OPEN_WEATHER_API_KEY, "units": "metric"}
+        r = requests.get(url, params=params, timeout=10)
+        data = r.json()
+        if r.status_code != 200:
+            return f"Couldn't get weather for {city}: {data.get('message', 'unknown error')}"
+        desc = data["weather"][0]["description"]
+        temp = data["main"]["temp"]
+        feels = data["main"]["feels_like"]
+        return f"It's currently {temp}°C (feels like {feels}°C) with {desc} in {city}."
+    except Exception as e:
+        return f"Weather lookup failed: {e}"
+
+
+def web_search(query: str) -> str:
+    if not config.ENABLE_WEB_SEARCH:
+        return "Web search is disabled in config.py."
+    try:
+        # Uses DuckDuckGo's instant answer API — no account/key needed.
+        r = requests.get(
+            "https://api.duckduckgo.com/",
+            params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
+            timeout=10,
+        )
+        data = r.json()
+        abstract = data.get("AbstractText")
+        if abstract:
+            return abstract
+        related = data.get("RelatedTopics", [])
+        if related and isinstance(related[0], dict) and related[0].get("Text"):
+            return related[0]["Text"]
+        return f"No quick answer found for '{query}'."
+    except Exception as e:
+        return f"Web search failed: {e}"
+
+
+def get_datetime() -> str:
+    now = datetime.datetime.now()
+    return now.strftime("It's %A, %B %d, %Y, %I:%M %p.")
+
+
+def open_application(app_name: str) -> str:
+    """Windows-specific app launcher."""
+    try:
+        subprocess.Popen(app_name, shell=True)
+        return f"Opening {app_name}."
+    except Exception as e:
+        return f"Couldn't open {app_name}: {e}"
+
+
+def set_reminder(text: str, memory) -> str:
+    memory.add_reminder(text)
+    return f"Reminder saved: {text}"
+
+
+def execute_tool(name: str, arguments: dict, memory) -> str:
+    """Dispatch a tool call by name."""
+    if name == "get_weather":
+        return get_weather(arguments.get("city", ""))
+    if name == "web_search":
+        return web_search(arguments.get("query", ""))
+    if name == "get_datetime":
+        return get_datetime()
+    if name == "open_application":
+        return open_application(arguments.get("app_name", ""))
+    if name == "set_reminder":
+        return set_reminder(arguments.get("text", ""), memory)
+    if name == "list_smart_devices":
+        return smart_home.list_devices()
+    if name == "control_smart_device":
+        return smart_home.control_device(arguments.get("device_name", ""), arguments.get("action", "toggle"))
+    if name == "send_whatsapp_message":
+        return whatsapp.send_message(arguments.get("contact", ""), arguments.get("message", ""))
+    if name == "phone_send_sms":
+        return phone_control.send_sms(arguments.get("phone_number", ""), arguments.get("message", ""))
+    if name == "phone_call":
+        return phone_control.make_call(arguments.get("phone_number", ""))
+    if name == "phone_open_app":
+        return phone_control.open_app(arguments.get("app_name", ""))
+    if name == "phone_get_battery":
+        return phone_control.get_battery()
+    return f"Unknown tool: {name}"
