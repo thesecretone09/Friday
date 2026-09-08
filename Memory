@@ -1,0 +1,93 @@
+"""
+Memory — 100% local storage using SQLite.
+Nothing here ever touches the network. The .db file lives entirely
+inside your own project folder (data/memory.db).
+"""
+
+import sqlite3
+import os
+import datetime
+
+import config
+
+
+class Memory:
+    def __init__(self):
+        os.makedirs(config.DATA_DIR, exist_ok=True)
+        self.conn = sqlite3.connect(config.MEMORY_DB_PATH)
+        self._init_tables()
+
+    def _init_tables(self):
+        cur = self.conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS conversation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS facts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fact TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                done INTEGER DEFAULT 0
+            )
+        """)
+        self.conn.commit()
+
+    # ---- conversation history ----
+    def add_message(self, role: str, content: str):
+        cur = self.conn.cursor()
+        cur.execute(
+            "INSERT INTO conversation (role, content, timestamp) VALUES (?, ?, ?)",
+            (role, content, datetime.datetime.now().isoformat()),
+        )
+        self.conn.commit()
+
+    def get_recent_messages(self, limit=None) -> list:
+        limit = limit or config.MAX_CONVERSATION_TURNS
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT role, content FROM conversation ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+        rows = cur.fetchall()
+        rows.reverse()
+        return [{"role": r, "content": c} for r, c in rows]
+
+    # ---- long-term facts (things worth remembering across sessions) ----
+    def add_fact(self, fact: str):
+        cur = self.conn.cursor()
+        cur.execute(
+            "INSERT INTO facts (fact, timestamp) VALUES (?, ?)",
+            (fact, datetime.datetime.now().isoformat()),
+        )
+        self.conn.commit()
+
+    def get_all_facts(self) -> list:
+        cur = self.conn.cursor()
+        cur.execute("SELECT fact FROM facts ORDER BY id DESC")
+        return [row[0] for row in cur.fetchall()]
+
+    # ---- reminders ----
+    def add_reminder(self, text: str):
+        cur = self.conn.cursor()
+        cur.execute(
+            "INSERT INTO reminders (text, created_at) VALUES (?, ?)",
+            (text, datetime.datetime.now().isoformat()),
+        )
+        self.conn.commit()
+
+    def get_open_reminders(self) -> list:
+        cur = self.conn.cursor()
+        cur.execute("SELECT id, text FROM reminders WHERE done = 0 ORDER BY id")
+        return cur.fetchall()
