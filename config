@@ -1,0 +1,69 @@
+"""
+Central configuration for your private assistant.
+Edit these values to customize behavior.
+"""
+
+import os
+
+# ---------- Identity ----------
+ASSISTANT_NAME = "Jarvis"
+WAKE_WORD = "jarvis"  # spoken word/phrase that activates listening (simple text-match version)
+
+# ---------- LLM (runs 100% locally via Ollama) ----------
+OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_MODEL = "llama3.1:8b"   # good balance of speed/quality on an RTX GPU
+                                 # alternatives: "mistral", "qwen2.5:7b", "phi3.5"
+
+SYSTEM_PROMPT = f"""You are {ASSISTANT_NAME}, a private, helpful personal AI assistant
+running entirely on the user's own computer. Be concise, direct, and friendly.
+You can use tools when the user asks for real-time info (weather, web search) or
+wants you to perform an action (open an app, set a reminder, get the time/date).
+Only use a tool when it's actually needed — otherwise just answer directly.
+"""
+
+# ---------- Speech-to-Text (local, via faster-whisper) ----------
+WHISPER_MODEL_SIZE = "base"     # tiny/base/small/medium/large-v3 — bigger = more accurate, slower
+WHISPER_DEVICE = "cuda"         # "cuda" since you have an RTX GPU; use "cpu" if it fails
+WHISPER_COMPUTE_TYPE = "float16"
+
+RECORD_SECONDS = 5              # how long to listen per turn
+SAMPLE_RATE = 16000
+
+# ---------- Text-to-Speech ----------
+# "local" = pyttsx3, fully offline, robotic-ish voice, zero network calls
+# "edge" = Microsoft Edge TTS, natural voice, requires internet (text is sent to Microsoft)
+TTS_ENGINE = "local"
+TTS_RATE = 175
+
+# ---------- Memory (fully local, stored only on your disk) ----------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+MEMORY_DB_PATH = os.path.join(DATA_DIR, "memory.db")
+MAX_CONVERSATION_TURNS = 20   # how many recent turns to keep in the LLM's short-term context
+
+# ---------- Tools that use the internet (opt-in per feature) ----------
+# Only the specific query text is sent out for these — never your conversation history.
+ENABLE_WEATHER = True
+ENABLE_WEB_SEARCH = True
+OPEN_WEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "")  # get a free key at openweathermap.org
+
+# ---------- Smart Home (via local Home Assistant instance) ----------
+HA_ENABLED = True
+HA_URL = "http://localhost:8123"          # or http://<your-ha-ip>:8123 if HA runs on another device
+HA_TOKEN = os.environ.get("HA_TOKEN", "")  # Long-Lived Access Token, generated in HA under your profile
+
+# ---------- Android Phone (via local ADB over WiFi) ----------
+PHONE_ENABLED = True
+ADB_DEVICE_ADDRESS = "192.168.1.50:5555"  # your phone's local IP:port, set during Wireless Debugging pairing
+PHONE_APP_PACKAGES = {
+    "whatsapp": "com.whatsapp",
+    "camera": "com.android.camera",
+    "chrome": "com.android.chrome",
+    "spotify": "com.spotify.music",
+    "gmail": "com.google.android.gm",
+    # add more as "app name": "package.name" (find via `adb shell pm list packages`)
+}
+
+# ---------- WhatsApp (via local WhatsApp Web automation) ----------
+WHATSAPP_ENABLED = True
+WHATSAPP_PROFILE_DIR = os.path.join(DATA_DIR, "whatsapp_profile")  # keeps you logged in between runs
