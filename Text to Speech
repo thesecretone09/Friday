@@ -1,0 +1,43 @@
+"""
+Text-to-Speech.
+Default: pyttsx3 — fully offline, nothing sent anywhere.
+Optional: edge-tts — nicer voice, sends the text (not your data/history) to Microsoft.
+"""
+
+import config
+
+
+class Speaker:
+    def __init__(self):
+        self.engine_type = config.TTS_ENGINE
+        if self.engine_type == "local":
+            import pyttsx3
+            self.engine = pyttsx3.init()
+            self.engine.setProperty("rate", config.TTS_RATE)
+        else:
+            self.engine = None  # edge-tts is called async, handled in speak()
+
+    def speak(self, text: str):
+        if not text:
+            return
+        print(f"[{config.ASSISTANT_NAME}] {text}")
+
+        if self.engine_type == "local":
+            self.engine.say(text)
+            self.engine.runAndWait()
+        else:
+            import asyncio
+            import edge_tts
+            import tempfile
+            import os
+            import playsound
+
+            async def _speak():
+                communicate = edge_tts.Communicate(text, "en-US-GuyNeural")
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                    path = f.name
+                await communicate.save(path)
+                playsound.playsound(path)
+                os.remove(path)
+
+            asyncio.run(_speak())
