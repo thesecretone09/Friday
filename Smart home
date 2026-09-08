@@ -1,0 +1,77 @@
+"""
+Smart home control via Home Assistant's local REST API.
+Home Assistant runs on your own network (e.g. Docker on this PC, or a
+Raspberry Pi) and talks to your smart plugs/bulbs directly over your LAN
+using the manufacturer's local/cloud integration (e.g. Tuya, Kasa, Tasmota).
+Jarvis never talks to your devices or their cloud directly — only to your
+own local Home Assistant instance.
+"""
+
+import requests
+
+import config
+
+
+def _headers():
+    return {
+        "Authorization": f"Bearer {config.HA_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+
+def list_devices() -> str:
+    if not config.HA_ENABLED:
+        return "Smart home control is disabled in config.py."
+    try:
+        r = requests.get(f"{config.HA_URL}/api/states", headers=_headers(), timeout=10)
+        r.raise_for_status()
+        states = r.json()
+        # Only show switches/lights to keep it readable
+        relevant = [s for s in states if s["entity_id"].startswith(("light.", "switch."))]
+        if not relevant:
+            return "No lights or switches found in Home Assistant."
+        lines = [f"{s['entity_id']} — {s['state']}" for s in relevant]
+        return "Your devices:\n" + "\n".join(lines)
+    except Exception as e:
+        return f"Couldn't reach Home Assistant: {e}"
+
+
+def control_device(device_name: str, action: str) -> str:
+    """
+    device_name: friendly name or entity_id fragment, e.g. "bedroom light" or "light.bedroom"
+    action: "on", "off", or "toggle"
+    """
+    if not config.HA_ENABLED:
+        return "Smart home control is disabled in config.py."
+    try:
+        entity_id = _resolve_entity(device_name)
+        if not entity_id:
+            return f"Couldn't find a device matching '{device_name}'. Try list_devices first."
+
+        domain = entity_id.split(".")[0]  # "light" or "switch"
+        service = {"on": "turn_on", "off": "turn_off", "toggle": "toggle"}.get(action, "toggle")
+
+        r = requests.post(
+            f"{config.HA_URL}/api/services/{domain}/{service}",
+            headers=_headers(),
+            json={"entity_id": entity_id},
+            timeout=10,
+        )
+        r.raise_for_status()
+        return f"Turned {action} {entity_id.split('.')[1].replace('_', ' ')}."
+    except Exception as e:
+        return f"Couldn't control device: {e}"
+
+
+def _resolve_entity(name_fragment: str) -> str:
+    """Finds the best-matching entity_id for a spoken device name."""
+    r = requests.get(f"{config.HA_URL}/api/states", headers=_headers(), timeout=10)
+    r.raise_for_status()
+    states = r.json()
+    name_fragment = name_fragment.lower().replace(" ", "_")
+    for s in states:
+        eid = s["entity_id"]
+        friendly = s.get("attributes", {}).get("friendly_name", "").lower().replace(" ", "_")
+        if eid.startswith(("light.", "switch.")) and (name_fragment in eid or name_fragment in friendly):
+            return eid
+    return None
